@@ -4,7 +4,37 @@ import mysql.connector
 import plotly.express as px
 
 
+# login spage
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
+def login():
+    st.title("ScoutPro Analytics Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username == "scout" and password == "scout":
+            st.session_state.logged_in = True
+            st.session_state.role = "Scout"
+            st.success("Logged in as Scout")
+            st.rerun()
+
+        else:
+            st.error("Invalid credentials")
+
+def logout():
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.rerun()
+
+if not st.session_state.logged_in:
+    login()
+    st.stop()
+
+st.sidebar.success(f"Logged in as: {st.session_state.role}")
+logout()
 
 # Page configuration
 st.set_page_config(page_title="ScoutPro Analytics Dashboard", layout="wide")
