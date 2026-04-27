@@ -1,13 +1,70 @@
 import streamlit as st
 import pandas as pd
-import mysql.connector
+import hashlib
+import os
 import plotly.express as px
 
+# Hash password function
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# login spage
+def load_users():
+    if os.path.exists("users.csv"):
+        return pd.read_csv("users.csv")
+    else:
+        return pd.DataFrame(columns=["username", "password"])
+
+def save_user(username, password):
+    users = load_users()
+    hashed_pw = hash_password(password)
+
+    new_user = pd.DataFrame([[username, hashed_pw]], columns=["username", "password"])
+    users = pd.concat([users, new_user], ignore_index=True)
+    users.to_csv("users.csv", index=False)
+
+#authentication function
+def authenticate(username, password):
+    users = load_users()
+    hashed_pw = hash_password(password)
+
+    user = users[
+        (users["username"] == username) &
+        (users["password"] == hashed_pw)
+    ]
+
+    return not user.empty
+
+# Session State
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+if "page" not in st.session_state:
+    st.session_state.page = "login"
+
+
+# Signup Page
+def signup():
+    st.title("ScoutPro Analytics Sign Up")
+
+    new_user = st.text_input("Create Username")
+    new_pass = st.text_input("Create Password", type="password")
+    confirm_pass = st.text_input("Confirm Password", type="password")
+
+    if st.button("Sign Up"):
+        users = load_users()
+
+        if new_user in users["username"].values:
+            st.error("Username already exists")
+        else:
+            save_user(new_user, new_pass)
+            st.success("Account created! You can now Login!.")
+            st.session_state.page = "login"
+
+    if st.button("Go to Login"):
+        st.session_state.page = "login"
+
+
+# Login Page
 def login():
     st.title("ScoutPro Analytics Login")
 
@@ -15,25 +72,34 @@ def login():
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if username == "scout" and password == "scout":
+        if authenticate(username, password):
             st.session_state.logged_in = True
-            st.session_state.role = "Scout"
-            st.success("Logged in as Scout")
+            st.session_state.username = username
+            st.success(f"Welcome {username}")
             st.rerun()
-
         else:
             st.error("Invalid credentials")
 
+    if st.button("Create Account"):
+        st.session_state.page = "signup"
+
+
+# Logout function
 def logout():
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
 
+
 if not st.session_state.logged_in:
-    login()
+    if st.session_state.page == "login":
+        login()
+    else:
+        signup()
     st.stop()
 
-st.sidebar.success(f"Logged in as: {st.session_state.role}")
+#Sidebar info 
+st.sidebar.success(f"Logged in as: {st.session_state.username}")
 logout()
 
 # Page configuration
@@ -105,7 +171,7 @@ try:
     st.sidebar.info(f"**Showing {len(filtered_df)} players**")
 
     # Main Dashboard Section
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric("Total Players", len(filtered_df))
@@ -121,6 +187,10 @@ try:
     with col4:
         total_assists = filtered_df['Assists'].sum()
         st.metric("Total Assists", int(total_assists))
+
+    with col5:
+        totaltransfer_value = filtered_df['Transfer_Value'].sum()
+        st.metric("Total Transfer Value", str(totaltransfer_value))
     
     st.markdown("---")
 
@@ -370,6 +440,22 @@ try:
                 )
                 st.plotly_chart(fig_creativity, use_container_width=True)
 
+            with col1:
+                st.markdown("#### Transfer Value vs Goals")
+                
+                fig_value_goals = px.scatter(
+                    filtered_df,
+                    x='Transfer_Value',
+                    y='Goals',
+                    color='Position',
+                    size='Apps',
+                    hover_data=['Name', 'Club', 'Age'],
+                    title="Transfer Value vs Goal Output"
+                    )
+                
+                st.plotly_chart(fig_value_goals, use_container_width=True)
+
+    
 
 
 
@@ -388,7 +474,6 @@ try:
                 names=position_counts.index,
                 title="Position Distribution",
                 hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Set3
             )
             fig12.update_traces(textposition='inside', textinfo='label+percent')
             st.plotly_chart(fig12, use_container_width=True)
@@ -611,7 +696,7 @@ try:
                 st.success(f"Found {len(search_results)} player(s)")
                 for idx, player in search_results.iterrows():
                     
-                    with st.expander(f"⚽ {player['Name']} - {player['Position']}"):
+                    with st.expander(f"{player['Name']} - {player['Position']}"):
                         col1, col2, col3 = st.columns(3)
                             
                         with col1:
@@ -639,6 +724,7 @@ try:
                             st.write(f"**Dribbles:** {player['Dribbles']}%")
                             st.write(f"**xG:** {player['xG']}%")  
                             st.write(f"**xA:** {player['xA']}%")
+                            st.write(f"**Transfer Value:** {player['Transfer_Value']}")
                                 
                 else:
                     st.warning("No players found with that name")
@@ -652,11 +738,7 @@ try:
         use_container_width=True
         )
 
-                
-
-
-            
-
+         
 except Exception as e:
     st.error(f"Error loading data: {str(e)}")
     st.info("Make sure 'scout_dataset.csv' is in the same folder as app.py")
